@@ -7,7 +7,7 @@ Nightmare is a high-level browser automation library.
 
 The goal is to expose just a few simple methods, and have an API that feels synchronous for each block of scripting, rather than deeply nested callbacks. It's designed for automating tasks across sites that don't have APIs.
 
-Under the covers it uses [Electron](http://electron.atom.io/), which is similar to [PhantomJS](http://phantomjs.org/) but faster and more modern.
+Under the covers it uses [Electron](http://electron.atom.io/), which is similar to [PhantomJS](http://phantomjs.org/) but roughly [2 times faster](https://github.com/segmentio/nightmare/issues/484#issuecomment-184519591) and more modern.
 
 [Daydream](https://github.com/segmentio/daydream) is a complementary chrome extension built by [@stevenmiller888](https://github.com/stevenmiller888) that generates Nightmare scripts for you while you browse.
 
@@ -27,23 +27,23 @@ Many thanks to [@matthewmueller](https://github.com/matthewmueller) and [@rosshi
 
 ## Examples
 
-Let's search on Yahoo:
+Let's search on DuckDuckGo:
 
 ```js
-var Nightmare = require('nightmare');
+var Nightmare = require('nightmare');		
 var nightmare = Nightmare({ show: true });
 
 nightmare
-  .goto('http://yahoo.com')
-  .type('form[action*="/search"] [name=p]', 'github nightmare')
-  .click('form[action*="/search"] [type=submit]')
-  .wait('#main')
+  .goto('https://duckduckgo.com')
+  .type('#search_form_input_homepage', 'github nightmare')
+  .click('#search_button_homepage')
+  .wait('#zero_click_wrapper .c-info__title a')
   .evaluate(function () {
-    return document.querySelector('#main .searchCenterMiddle li a').href
+    return document.querySelector('#zero_click_wrapper .c-info__title a').href;
   })
   .end()
   .then(function (result) {
-    console.log(result)
+    console.log(result);
   })
   .catch(function (error) {
     console.error('Search failed:', error);
@@ -63,16 +63,16 @@ Or, let's run some mocha tests:
 var Nightmare = require('nightmare');
 var expect = require('chai').expect; // jshint ignore:line
 
-describe('test yahoo search results', function() {
+describe('test duckduckgo search results', function() {
   it('should find the nightmare github link first', function(done) {
     var nightmare = Nightmare()
     nightmare
-      .goto('http://yahoo.com')
-      .type('form[action*="/search"] [name=p]', 'github nightmare')
-      .click('form[action*="/search"] [type=submit]')
-      .wait('#main')
+      .goto('https://duckduckgo.com')
+      .type('#search_form_input_homepage', 'github nightmare')
+      .click('#search_button_homepage')
+      .wait('#zero_click_wrapper .c-info__title a')
       .evaluate(function () {
-        return document.querySelector('#main .searchCenterMiddle li a').href
+        return document.querySelector('#zero_click_wrapper .c-info__title a').href
       })
       .end()
       .then(function(link) {
@@ -235,7 +235,15 @@ Set the `useragent` used by electron.
 Set the `user` and `password` for accessing a web page using basic authentication. Be sure to set it before calling `.goto(url)`.
 
 #### .end()
-Complete any queue operations, disconnect and close the electron process.  Note that if you're using promises, `.then()` must be called after `.end()` to run the `.end()` task.
+Complete any queue operations, disconnect and close the electron process.  Note that if you're using promises, `.then()` must be called after `.end()` to run the `.end()` task.  Also note that if using a `.end()` callback, the `.end()` call is equivalent to calling `.end()` followed by `.then(fn)`.  Consider:
+
+```js
+nightmare
+  .goto(someUrl)
+  .end(() => "some value")
+  //prints "some value"
+  .then((value) => console.log(value));
+```
 
 #### .halt(error, done)
 Clears all queued operations, kills the electron process, and passes error message or 'Nightmare Halted' to an unresolved promise. Done will be called after the process has exited.
@@ -279,6 +287,9 @@ Clicks the `selector` element once.
 #### .mousedown(selector)
 Mousedown the `selector` element once.
 
+#### .mouseup(selector)
+Mouseup the `selector` element once.
+
 #### .mouseover(selector)
 Mouseover the `selector` element once.
 
@@ -287,7 +298,7 @@ Enters the `text` provided into the `selector` element.  Empty or falsey values 
 
 `.type()` mimics a user typing in a textbox and will emit the proper keyboard events
 
-Key presses can also be fired using Unicode values with `.type()`. For example, if you wanted to fire an enter key press, you would  write `.type('document', '\u000d')`.
+Key presses can also be fired using Unicode values with `.type()`. For example, if you wanted to fire an enter key press, you would  write `.type('body', '\u000d')`.
 
 > If you don't need the keyboard events, consider using `.insert()` instead as it will be faster and more robust.
 
@@ -330,7 +341,7 @@ nightmare
   })
 ```
 
-Callbacks are supported as a part of evaluate.  If the arguments passed are one fewer than the arguments expected for the evaluated function, the evaluation will be passed a callback as the last parameter to the function.  For example:
+Error-first callbacks are supported as a part of evaluate.  If the arguments passed are one fewer than the arguments expected for the evaluated function, the evaluation will be passed a callback as the last parameter to the function.  For example:
 
 ```js
 var selector = 'h1';
@@ -343,17 +354,17 @@ nightmare
     // ...
   })
 ```
-Note that callbacks support only one value argument.  Ultimately, the callback will get wrapped in a native Promise and only be able to resolve a single value.
+Note that callbacks support only one value argument (eg `function(err, value)`).  Ultimately, the callback will get wrapped in a native Promise and only be able to resolve a single value.
 
 Promises are also supported as a part of evaluate.  If the return value of the function has a `then` member, `.evaluate()` assumes it is waiting for a promise.  For example:
 
 ```js
 var selector = 'h1';
 nightmare
-  .evaluate(function (selector, done) {
+  .evaluate(function (selector) {
       return new Promise((resolve, reject) => {
         setTimeout(() => resolve(document.querySelector(selector).innerText), 2000);
-   }, selector)
+   })}, selector)
   .then(function(text) {
     // ...
   })
@@ -435,13 +446,16 @@ Takes a screenshot of the current page. Useful for debugging. The output is alwa
 Save the current page as html as files to disk at the given path. Save type options are [here](https://github.com/atom/electron/blob/master/docs/api/web-contents.md#webcontentssavepagefullpath-savetype-callback).
 
 #### .pdf(path, options)
-Saves a PDF to the specified `path`. Options are [here](https://github.com/atom/electron/blob/v0.35.2/docs/api/web-contents.md#webcontentsprinttopdfoptions-callback).
+Saves a PDF to the specified `path`. Options are [here](https://github.com/electron/electron/blob/v1.4.4/docs/api/web-contents.md#contentsprinttopdfoptions-callback).
 
 #### .title()
 Returns the title of the current page.
 
 #### .url()
 Returns the url of the current page.
+
+#### .path()
+Returns the path name of the current page.
 
 ### Cookies
 
@@ -616,7 +630,7 @@ Nightmare.action('style', {
   }
 })
 
-nightmare()
+Nightmare()
   .goto('http://google.com')
   .style.background()
   .then(function(background) {
@@ -634,7 +648,7 @@ Nightmare.action('clearCache',
     });
     done();
   },
-  function(message, done) {
+  function(done) {
     this.child.call('clearCache', done);
   });
 
@@ -677,6 +691,34 @@ __nightmare.ipc = require('electron').ipcRenderer;
 ```
 
 To benefit of all of nightmare's feedback from the browser, you can instead copy the contents of nightmare's [preload script](lib/preload.js).
+
+#### Storage Persistence between nightmare instances
+
+By default nightmare will create an in-memory partition for each instance. This means that any localStorage or cookies or any other form of persistent state will be destroyed when nightmare is ended. If you would like to persist state between instances you can use the [webPreferences.partition](http://electron.atom.io/docs/api/browser-window/#new-browserwindowoptions) api in electron.
+
+```js
+var Nightmare = require('nightmare');
+
+nightmare = Nightmare(); // non persistent paritition by default
+yield nightmare
+  .evaluate(function () { 
+    window.localStorage.setItem('testing', 'This will not be persisted');
+  })
+  .end();
+
+nightmare = Nightmare({
+  webPreferences: {
+    partition: 'persist: testing'
+  }
+});
+yield nightmare
+  .evaluate(function () {
+    window.localStorage.setItem('testing', 'This is persisted for other instances with the same paritition name');
+  })
+  .end();
+```
+
+If you specify a `null` paritition then it will use the electron default behavior (persistent) or any string that starts with `'persist:'` will persist under that partition name, any other string will result in in-memory only storage.
 
 ## Usage
 #### Installation
