@@ -1151,6 +1151,26 @@ describe('Nightmare', function () {
       color.should.equal('rgb(102, 255, 102)');
     });
 
+    it('should release hover from an element', function*() {
+      var hoverColor = 'rgb(0, 255, 255)';
+      var hoveredColor = yield nightmare
+        .goto(fixture('manipulation'))
+        .mouseover('h2')
+        .evaluate(function () {
+          var element = document.querySelector('h2');
+          return element.style.background;
+        });
+      hoveredColor.should.equal(hoverColor);
+
+      var nonHoveredColor = yield nightmare
+        .mouseout('h2')
+        .evaluate(function () {
+          var element = document.querySelector('h2');
+          return element.style.background;
+        });
+      nonHoveredColor.should.not.equal(hoverColor);
+    });
+
     it('should mousedown on an element', function*() {
       var color = yield nightmare
         .goto(fixture('manipulation'))
@@ -2025,7 +2045,61 @@ describe('Nightmare', function () {
       nightmare = Nightmare({ electronPath: require('electron') });
       nightmare.should.be.ok;
     });
+
+    it('should allow to use external Promise', function*() {
+      nightmare = Nightmare({ Promise: require('bluebird') });
+      nightmare.should.be.ok;
+      const thenPromise = nightmare.goto('about:blank').then();
+      thenPromise.should.be.an.instanceof(require('bluebird'));
+      yield thenPromise;
+      const catchPromise = nightmare.goto('about:blank').catch();
+      catchPromise.should.be.an.instanceof(require('bluebird'));
+      yield catchPromise;
+      const endPromise = nightmare.goto('about:blank').end().then();
+      endPromise.constructor.should.equal(require('bluebird'));
+      endPromise.should.be.an.instanceof(require('bluebird'));
+      yield endPromise;
+    });
   });
+
+  describe('Nightmare.Promise', function() {
+    var nightmare;
+    afterEach(function*() {
+      // `withDeprecationTracking()` messes w/ prototype constructor references
+      Nightmare.Promise = require('..').Promise = Promise;
+      yield nightmare.end();
+    });
+
+    it('should default to native Promise', function*() {
+      Nightmare.Promise.should.equal(Promise);
+      nightmare = Nightmare();
+      nightmare.should.be.ok;
+      var thenPromise = nightmare.goto('about:blank').then();
+      thenPromise.should.be.an.instanceof(Promise);
+      yield thenPromise;
+    });
+
+    it('should override default Promise library', function*() {
+      // `withDeprecationTracking()` messes w/ prototype constructor references
+      Nightmare.Promise = require('..').Promise = require('bluebird');
+      Nightmare.Promise.should.equal(require('bluebird'));
+      nightmare = Nightmare();
+      nightmare.should.be.ok;
+      var thenPromise = nightmare.goto('about:blank').then();
+      thenPromise.should.be.an.instanceof(require('bluebird'));
+      yield thenPromise;
+    });
+
+    it('should not override per-instance Promise library', function*() {
+      Nightmare.Promise.should.equal(Promise);
+      nightmare = Nightmare({ Promise: require('bluebird') });
+      nightmare.should.be.ok;
+      var thenPromise = nightmare.goto('about:blank').then();
+      thenPromise.should.not.be.an.instanceof(Promise);
+      thenPromise.should.be.an.instanceof(require('bluebird'));
+      yield thenPromise;
+    });
+  })
 
   describe('Nightmare.action(name, fn)', function() {
     afterEach(function*() {
